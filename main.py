@@ -1,11 +1,12 @@
-from flask import Flask, flash
-from flask import render_template, redirect, url_for
+from flask import Flask, flash, render_template, redirect, url_for, request
 from flask_sqlalchemy import SQLAlchemy
 from forms import LoginForm, AdminRegisterForm, RegisterForm
 from flask_login import (LoginManager, UserMixin, current_user, login_user, logout_user)
+from flask_bcrypt import Bcrypt
 
 import string
 import random
+import json
 
 app = Flask(__name__)
 
@@ -14,6 +15,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///site.db"
 
 db = SQLAlchemy(app)
 
+bcrypt = Bcrypt(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -62,7 +64,7 @@ def login():
 		#hashed_password = bcrypt.generate_password_hash(form.password.data).decode("utf-8")
 		found_matching_credentials = False
 		for db_account in User.query.filter_by(username=form.username.data).all():
-			if(db_account.username == form.username.data and db_account.password == form.password.data):
+			if(db_account.username == form.username.data and bcrypt.check_password_hash(db_account.password, form.password.data)):
 				found_matching_credentials = True
 				break
 
@@ -78,9 +80,9 @@ def login():
 
 @app.route("/logout")
 def logout():
-    logout_user()
-    flash(f"you have been logged out", "info")
-    return redirect(url_for("login"))
+	logout_user()
+	flash(f"you have been logged out", "info")
+	return redirect(url_for("login"))
 
 
 @app.route("/admin_register", methods=["GET", "POST"])
@@ -94,10 +96,17 @@ def admin_register():
 		admin = False
 		if form.rights.data == "admin":
 			admin = True
-		new_user = User(username=form.username.data, password=form.password.data, user_email=form.user_email.data, is_admin=admin)
+
+		pw = bcrypt.generate_password_hash(form.password.data).decode("utf-8")
+		new_user = User(username=form.username.data, password=pw, user_email=form.user_email.data, is_admin=admin)
 		db.session.add(new_user)
 		db.session.commit()
 		flash(f"successfully created new user {form.username.data}", "success")
+
+	elif "submit" in request.form:
+		for fieldName, errorMessages in form.errors.items():
+			for error in errorMessages:
+				flash(f"Benutzerregistrierung ({fieldName}): {error}", "danger")
 
 	lower = string.ascii_lowercase
 	upper = string.ascii_uppercase
@@ -108,19 +117,26 @@ def admin_register():
 	temp = random.sample(all, 12)
 	recommended_pw = "".join(temp)
 
-	return render_template("register.html", form=form, recommended_pw=recommended_pw)
+	return render_template("admin_register.html", form=form, recommended_pw=recommended_pw)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
 
 	form = RegisterForm()
 	if form.validate_on_submit():
-		new_user = User(username=form.username.data, password=form.password.data, user_email=form.user_email.data, is_admin=0)
+		pw = bcrypt.generate_password_hash(form.password.data).decode("utf-8")
+
+		new_user = User(username=form.username.data, password=pw, user_email=form.user_email.data, is_admin=0)
 		db.session.add(new_user)
 		db.session.commit()
 		flash(f"successfully created new user {form.username.data}", "success")
 		return redirect(url_for("login"))
 
+	elif "submit" in request.form:
+		for fieldName, errorMessages in form.errors.items():
+			for error in errorMessages:
+				flash(f"Benutzerregistrierung ({fieldName}): {error}", "danger")
+				
 	lower = string.ascii_lowercase
 	upper = string.ascii_uppercase
 	num = string.digits
@@ -131,6 +147,16 @@ def register():
 	recommended_pw = "".join(temp)
 
 	return render_template("register.html", form=form, recommended_pw=recommended_pw)
+
+@app.route("/api/<user_id>", methods=["GET"])
+def api(user_id):
+	prov_dict = {}
+	provisions = Provision.query.filter_by(user_id=user_id).all()
+	for prov in provisions:
+		prov_dict[prov.client_name] = prov.value
+
+	return str(json.dumps(prov_dict))
+
 
 if __name__ == "__main__":   
 	app.run(debug=True)
