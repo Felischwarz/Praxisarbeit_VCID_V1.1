@@ -11,7 +11,7 @@ import json
 app = Flask(__name__)
 
 app.config["SECRET_KEY"] = "081a91839fd7bd70282d24fd718f4ca2"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///site.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+pymysql://root:hgfjffdhb@localhost/db" #"sqlite:///site.db" 
 
 db = SQLAlchemy(app)
 
